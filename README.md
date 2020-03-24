@@ -1,15 +1,17 @@
 ![image](screenshot.png)
+P
 
-`pacwall.sh` is a shell script that changes your wallpaper to the
-dependency graph of installed by `pacman` packages. Each package is a
+`pacwall` is a shell script that changes your wallpaper to the
+dependency graph of installed by `apt` packages. Each package is a
 node and each edge indicates a dependency between two packages. The
 explicitly installed packages have a distinct color (orange by default).
+The color scheme was based on [Dracula theme](https://github.com/dracula/dracula-theme).
 
 Requirements
 ============
 
 ``` {.sourceCode .bash}
-sudo pacman -Syu --needed imagemagick graphviz pacman-contrib feh xorg-xdpyinfo
+sudo apt install imagemagick graphviz debtree feh x11-utils
 ```
 
 Customization
