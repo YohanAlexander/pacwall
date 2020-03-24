@@ -11,7 +11,7 @@ GSIZE="1366x768"
 OUTPUT="pacwall.png"
 
 STARTDIR="${PWD}"
-WORKDIR="/tmp"
+WORKDIR="build"
 
 prepare() {
     WORKDIR="$(mktemp -d)"
@@ -35,7 +35,7 @@ generate_graph() {
         echo "Package $package: ${EPKGS[package]}"
 
         # Mark each explicitly installed package using a distinct solid color.
-        echo "\"${EPKGS[package]}\" [color=$ENODE]" >> pkgcolors
+        echo "\"${EPKGS[package]}\" [color="\"$ENODE\"] >> pkgcolors
 
         # Extract the list of edges from the output of pactree.
         if(!(debtree "${EPKGS[package]}" > "raw/${EPKGS[package]}")) then
@@ -47,6 +47,7 @@ generate_graph() {
             -e 's/\[.*\]//' \
             -e 's/>?=.*" ->/"->/' \
             -e 's/>?=.*"/"/' \
+            -e '/->/!d' \
             "raw/${EPKGS[package]}" > "stripped/${EPKGS[package]}"
         else
             continue
