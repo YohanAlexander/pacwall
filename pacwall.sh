@@ -11,17 +11,14 @@ GSIZE="1366x768"
 OUTPUT="pacwall.png"
 
 STARTDIR="${PWD}"
-WORKDIR="build"
+WORKDIR="$HOME"'/.pacwall/'
 
 prepare() {
-    WORKDIR="$(mktemp -d)"
+    mkdir -p "$WORKDIR"
+    mkdir -p "$WORKDIR"cksum
     mkdir -p "${WORKDIR}/"{stripped,raw}
     touch "${WORKDIR}/pkgcolors"
     cd "${WORKDIR}"
-}
-
-cleanup() {
-    cd "${STARTDIR}" && rm -rf "${WORKDIR}"
 }
 
 generate_graph() {
@@ -32,23 +29,30 @@ generate_graph() {
     for package in ${!EPKGS[@]}
     do
 
-        echo "Package $package: ${EPKGS[package]}"
-
         # Mark each explicitly installed package using a distinct solid color.
         echo "\"${EPKGS[package]}\" [color="\"$ENODE\"] >> pkgcolors
 
+        # if DOT version hasn't ever been created, or it changed, then
+        # make conversion and store the checksum.
+        echo "Package $package: ${EPKGS[package]}"
+        CHECK="$(cksum ${WORKDIR}'raw/'${EPKGS[package]} | awk '{print $1}')"
+        echo "${CHECK}" > "${WORKDIR}cksum/${EPKGS[package]}.check"
+
         # Extract the list of edges from the output of pactree.
-        if(!(debtree "${EPKGS[package]}" > "raw/${EPKGS[package]}")) then
-        sed -E \
-            -e '/START/d' \
-            -e '/^node/d' \
-            -e '/\}/d' \
-            -e '/arrowhead=none/d' \
-            -e 's/\[.*\]//' \
-            -e 's/>?=.*" ->/"->/' \
-            -e 's/>?=.*"/"/' \
-            -e '/->/!d' \
-            "raw/${EPKGS[package]}" > "stripped/${EPKGS[package]}"
+        if(debtree "${EPKGS[package]}" > "raw/${EPKGS[package]}") then
+            if [[ ( ! -f ${WORKDIR}'stripped/'${EPKGS[package]} ) || ( ! ( "${CHECK}" == "$(cat ${WORKDIR}'cksum/'${EPKGS[package]}'.check')" ) ) ]] ; then
+            echo "Updating package dependencies..."
+            sed -E \
+                -e '/START/d' \
+                -e '/^node/d' \
+                -e '/\}/d' \
+                -e '/arrowhead=none/d' \
+                -e 's/\[.*\]//' \
+                -e 's/>?=.*" ->/"->/' \
+                -e 's/>?=.*"/"/' \
+                -e '/->/!d' \
+                "raw/${EPKGS[package]}" > "stripped/${EPKGS[package]}"
+            fi
         else
             continue
         fi
@@ -107,16 +111,16 @@ set_wallpaper() {
 }
 
 main() {
-    echo 'Preparing the environment'
+    echo 'Preparing the environment...'
     prepare
 
-    echo 'Generating the graph.'
+    echo 'Generating the graph...'
     generate_graph 2> /dev/null
 
-    echo 'Compiling the graph.'
+    echo 'Compiling the graph...'
     compile_graph
 
-    echo 'Rendering it.'
+    echo 'Rendering it...'
     render_graph
 
     resize_wallpaper
@@ -125,10 +129,9 @@ main() {
 
     set_wallpaper
 
-    cleanup
-
     echo 'The image has been put into the current directory.'
     echo 'Done.'
+
 }
 
 help() {
