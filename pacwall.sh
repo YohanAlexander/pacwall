@@ -2,16 +2,16 @@
 set -e
 
 # Default colors.
-BACKGROUND=darkslategray
-NODE='#dc143c88'
-ENODE=darkorange
-EDGE='#ffffff44'
-GSIZE=""
+BACKGROUND='#282a36'
+NODE='#ff5555'
+ENODE='#ffb86c'
+EDGE='#f8f8f2'
+GSIZE="1366x768"
 
 OUTPUT="pacwall.png"
 
 STARTDIR="${PWD}"
-WORKDIR=""
+WORKDIR="/tmp"
 
 prepare() {
     WORKDIR="$(mktemp -d)"
@@ -26,15 +26,19 @@ cleanup() {
 
 generate_graph() {
     # Get a space-separated list of the explicitly installed packages.
-    EPKGS="$(pacman -Qeq | tr '\n' ' ')"
-    for package in ${EPKGS}
+    EPKGS="$(apt-mark showmanual | tr '\n' ' ')"
+    EPKGS=($EPKGS)
+    echo "Total explicitly installed packages: ${#EPKGS[@]}"
+    for package in ${!EPKGS[@]}
     do
 
+        echo "Package $package: ${EPKGS[package]}"
+
         # Mark each explicitly installed package using a distinct solid color.
-        echo "\"$package\" [color=$ENODE]" >> pkgcolors
+        echo "\"${EPKGS[package]}\" [color=$ENODE]" >> pkgcolors
 
         # Extract the list of edges from the output of pactree.
-        pactree -g "$package" > "raw/$package"
+        if(!(debtree "${EPKGS[package]}" > "raw/${EPKGS[package]}")) then
         sed -E \
             -e '/START/d' \
             -e '/^node/d' \
@@ -43,7 +47,10 @@ generate_graph() {
             -e 's/\[.*\]//' \
             -e 's/>?=.*" ->/"->/' \
             -e 's/>?=.*"/"/' \
-            "raw/$package" > "stripped/$package"
+            "raw/${EPKGS[package]}" > "stripped/${EPKGS[package]}"
+        else
+            continue
+        fi
 
     done
 }
@@ -75,7 +82,7 @@ render_graph() {
     if [ -n "${GSIZE}" ]; then
         twopi_args+=("-Gsize=${GSIZE}")
     fi
-    
+
     twopi "${twopi_args[@]}" > "${OUTPUT}"
 }
 
@@ -86,7 +93,7 @@ resize_wallpaper() {
         -gravity center \
         -background "${BACKGROUND}" \
         -extent "${SCREEN_SIZE}" \
-        "${OUTPUT}"    
+        "${OUTPUT}"
 }
 
 set_wallpaper() {
@@ -103,7 +110,7 @@ main() {
     prepare
 
     echo 'Generating the graph.'
-    generate_graph
+    generate_graph 2> /dev/null
 
     echo 'Compiling the graph.'
     compile_graph
