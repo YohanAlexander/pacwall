@@ -21,38 +21,49 @@ prepare() {
     cd "${WORKDIR}"
 }
 
+check_graph() {
+CHECK="$(cksum ${WORKDIR}'stripped/'${EPKGS[package]} | awk '{print $1}')"
+echo "${CHECK}" > "${WORKDIR}cksum/${EPKGS[package]}.check"
+}
+
+update_graph() {
+# Mark each explicitly installed package using a distinct solid color.
+echo "\"${EPKGS[package]}\" [color="\"$ENODE\"] >> pkgcolors
+# Extract the list of edges from the output of pactree.
+if( ( ! (debtree "${EPKGS[package]}" > "raw/${EPKGS[package]}") ) ) then
+    return
+fi
+echo "Updating package dependencies..."
+debtree "${EPKGS[package]}" > "raw/${EPKGS[package]}"
+sed -E \
+    -e '/START/d' \
+    -e '/^node/d' \
+    -e '/\}/d' \
+    -e '/arrowhead=none/d' \
+    -e 's/\[.*\]//' \
+    -e 's/>?=.*" ->/"->/' \
+    -e 's/>?=.*"/"/' \
+    -e '/->/!d' \
+    "raw/${EPKGS[package]}" > "stripped/${EPKGS[package]}"
+check_graph
+}
+
 generate_graph() {
     # Get a space-separated list of the explicitly installed packages.
     EPKGS="$(apt-mark showmanual | tr '\n' ' ')"
     EPKGS=($EPKGS)
-    echo "Total explicitly installed packages: ${#EPKGS[@]}"
+    echo "Installed packages: ${#EPKGS[@]}"
     for package in ${!EPKGS[@]}
     do
-
-        # Mark each explicitly installed package using a distinct solid color.
-        echo "\"${EPKGS[package]}\" [color="\"$ENODE\"] >> pkgcolors
-
+        echo "Package $package: ${EPKGS[package]}"
+        check_graph
+        echo "Checksum: ${CHECK}"
         # if DOT version hasn't ever been created, or it changed, then
         # make conversion and store the checksum.
-        echo "Package $package: ${EPKGS[package]}"
-        CHECK="$(cksum ${WORKDIR}'raw/'${EPKGS[package]} | awk '{print $1}')"
-        echo "${CHECK}" > "${WORKDIR}cksum/${EPKGS[package]}.check"
-
-        # Extract the list of edges from the output of pactree.
-        if(debtree "${EPKGS[package]}" > "raw/${EPKGS[package]}") then
-            if [[ ( ! -f ${WORKDIR}'stripped/'${EPKGS[package]} ) || ( ! ( "${CHECK}" == "$(cat ${WORKDIR}'cksum/'${EPKGS[package]}'.check')" ) ) ]] ; then
-            echo "Updating package dependencies..."
-            sed -E \
-                -e '/START/d' \
-                -e '/^node/d' \
-                -e '/\}/d' \
-                -e '/arrowhead=none/d' \
-                -e 's/\[.*\]//' \
-                -e 's/>?=.*" ->/"->/' \
-                -e 's/>?=.*"/"/' \
-                -e '/->/!d' \
-                "raw/${EPKGS[package]}" > "stripped/${EPKGS[package]}"
-            fi
+        if [[ ( ! ( "${CHECK}" == "$(cat ${WORKDIR}'cksum/'${EPKGS[package]}'.check')" ) ) ]] ; then
+            update_graph
+        elif [[ ( ! ( -f ${WORKDIR}'stripped/'${EPKGS[package]} ) ) ]] ; then
+            update_graph
         else
             continue
         fi
@@ -131,7 +142,6 @@ main() {
 
     echo 'The image has been put into the current directory.'
     echo 'Done.'
-
 }
 
 help() {
