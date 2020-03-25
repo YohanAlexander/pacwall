@@ -44,7 +44,7 @@ prepare() {
 }
 
 check_graph() {
-CHECK="$(cksum ${WORKDIR}'stripped/'${EPKGS[package]} | awk '{print $1}')"
+CHECK="$(cksum ${WORKDIR}'raw/'${EPKGS[package]} | awk '{print $1}')"
 echo "${CHECK}" > "${WORKDIR}cksum/${EPKGS[package]}.check"
 }
 
@@ -55,6 +55,7 @@ echo "\"${EPKGS[package]}\" [color="\"$ENODE\"] >> pkgcolors
 if( ( ! (debtree "${EPKGS[package]}" > "raw/${EPKGS[package]}") ) ) then
     return
 fi
+
 #echo "Updating package dependencies..."
 debtree "${EPKGS[package]}" > "raw/${EPKGS[package]}"
 sed -E \
@@ -77,6 +78,7 @@ generate_graph() {
     echo "Installed packages: ${#EPKGS[@]}"
     for package in ${!EPKGS[@]}
     do
+
         #echo "Package $package: ${EPKGS[package]}"
         check_graph
         #echo "Checksum: ${CHECK}"
@@ -94,7 +96,7 @@ generate_graph() {
         curr=$package
 
         # Draw a progress bar
-        draw_progress_bar $curr ${#EPKGS[@]}
+        draw_progress_bar $curr ${#EPKGS[@]} "packs"
 
         # Check if we reached 100%
         if [ $curr == ${#EPKGS[@]} ]; then break; fi
@@ -110,7 +112,13 @@ compile_graph() {
     # The graph is directed and strict (doesn't contain any edge duplicates).
     cd stripped
     echo 'strict digraph G {' > ../pacwall.gv
-    cat ../pkgcolors ${EPKGS} >> ../pacwall.gv
+    cat ../pkgcolors >> ../pacwall.gv
+    for package in ${!EPKGS[@]}
+    do
+        if [[ ( ( -f ${EPKGS[package]} ) ) ]] ; then
+            cat ${EPKGS[package]} >> ../pacwall.gv
+        fi
+    done
     echo '}' >> ../pacwall.gv
     cd ..
 }
@@ -168,19 +176,24 @@ main() {
     echo 'Rendering it...'
     render_graph
 
-    resize_wallpaper
+    if [[ -z "$IMAGE_ONLY" ]]; then
+        resize_wallpaper
+    fi
 
     cp "${WORKDIR}/${OUTPUT}" "${STARTDIR}"
 
-    set_wallpaper
+    if [[ -z "$IMAGE_ONLY" ]]; then
+        set_wallpaper
+    fi
 
     echo 'The image has been put into the current directory.'
     echo 'Done.'
 }
 
 help() {
-    printf "%s\n\t%s\n\t%s\n\t%s\n\t%s\n\t%s\n\t%s\n" \
+    printf "%s\n\t%s\n\t%s\n\t%s\n\t%s\n\t%s\n\t%s\n\t%s\n" \
         "USAGE: $0" \
+        "[ -i ]" \
         "[ -b BACKGROUND ]" \
         "[ -d NODE_COLOR ]" \
         "[ -e EXPLICIT_NODE_COLOR ]" \
@@ -190,10 +203,11 @@ help() {
         exit 0
 }
 
-options=':b:d:s:e:g:o:h'
+options='i:b:d:s:e:g:o:h'
 while getopts $options option
 do
     case $option in
+        i  ) IMAGE_ONLY=TRUE;;
         b  ) BACKGROUND=${OPTARG};;
         d  ) NODE=${OPTARG};;
         e  ) ENODE=${OPTARG};;
