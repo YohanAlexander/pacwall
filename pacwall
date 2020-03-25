@@ -7,7 +7,8 @@ NODE='#ff5555'
 ENODE='#ffb86c'
 EDGE='#f8f8f2'
 RANKSEP=1
-GSIZE="1366x768"
+GSIZE="8"
+SCREEN_SIZE="1920x1200"
 
 OUTPUT="pacwall.png"
 STARTDIR="${PWD}"
@@ -55,7 +56,6 @@ echo "\"${EPKGS[package]}\" [color="\"$ENODE\"] >> pkgcolors
 if( ( ! (debtree "${EPKGS[package]}" > "raw/${EPKGS[package]}") ) ) then
     return
 fi
-
 #echo "Updating package dependencies..."
 debtree "${EPKGS[package]}" > "raw/${EPKGS[package]}"
 sed -E \
@@ -147,9 +147,9 @@ render_graph() {
 
 set_wallpaper() {
     set +e
-
     if [[ "$DESKTOP_SESSION" == *"gnome"* ]]; then
         if [[ -z "$SCREEN_SIZE" ]]; then
+        # Use imagemagick to resize the image to the size of the screen.
             SCREEN_SIZE=$(
                 xdpyinfo | grep dimensions | sed -r 's/^[^0-9]*([0-9]+x[0-9]+).*$/\1/'
             )
@@ -161,13 +161,17 @@ set_wallpaper() {
             "${STARTDIR}/${OUTPUT}"
         gsettings set org.gnome.desktop.background picture-uri "${STARTDIR}/${OUTPUT}"
     else
+        convert "${OUTPUT}" \
+            -gravity center \
+            -background "${BACKGROUND}" \
+            -extent "${SCREEN_SIZE}" \
+            "${STARTDIR}/${OUTPUT}"
         hsetroot -solid $BACKGROUND -full "${STARTDIR}/${OUTPUT}" \
             2> /dev/null && echo 'Set the wallpaper using hsetroot.'
 
         feh --bg-center --no-fehbg --image-bg "$BACKGROUND" "${STARTDIR}/${OUTPUT}" \
             2> /dev/null && echo 'Set the wallpaper using feh.'
     fi
-
     set -e
 }
 
@@ -182,7 +186,7 @@ main() {
     compile_graph
 
     echo 'Rendering it...'
-    render_graph
+    render_graph 2> /dev/null
 
     cp "${WORKDIR}/${OUTPUT}" "${STARTDIR}"
 
@@ -238,3 +242,4 @@ done
 shift $((OPTIND - 1))
 
 main
+
