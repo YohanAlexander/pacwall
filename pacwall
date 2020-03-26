@@ -6,9 +6,9 @@ BACKGROUND='#282a36'
 NODE='#ff5555'
 ENODE='#ffb86c'
 EDGE='#f8f8f2'
-RANKSEP=1
-GSIZE="8"
-SCREEN_SIZE="1920x1200"
+RANKSEP=0.5
+GSIZE=""
+SCREEN_SIZE="1366x768"
 
 OUTPUT="pacwall.png"
 STARTDIR="${PWD}"
@@ -45,8 +45,8 @@ prepare() {
 }
 
 check_graph() {
-CHECK="$(cksum ${WORKDIR}'raw/'${EPKGS[package]} | awk '{print $1}')"
-echo "${CHECK}" > "${WORKDIR}cksum/${EPKGS[package]}.check"
+    CHECK="$(cksum ${WORKDIR}'raw/'${EPKGS[package]} | awk '{print $1}')"
+    echo "${CHECK}" > "${WORKDIR}cksum/${EPKGS[package]}.check"
 }
 
 update_graph() {
@@ -57,17 +57,19 @@ if( ( ! (debtree "${EPKGS[package]}" > "raw/${EPKGS[package]}") ) ) then
     return
 fi
 #echo "Updating package dependencies..."
-debtree "${EPKGS[package]}" > "raw/${EPKGS[package]}"
-sed -E \
-    -e '/START/d' \
-    -e '/^node/d' \
-    -e '/\}/d' \
-    -e '/arrowhead=none/d' \
-    -e 's/\[.*\]//' \
-    -e 's/>?=.*" ->/"->/' \
-    -e 's/>?=.*"/"/' \
-    -e '/->/!d' \
-    "raw/${EPKGS[package]}" > "stripped/${EPKGS[package]}"
+# Extract the list of edges from the output of debtree.
+    debtree -I -q \
+        --no-recommends \
+        --no-alternatives \
+        --no-versions \
+        --no-conflicts \
+        "${EPKGS[package]}" > "raw/${EPKGS[package]}"
+    sed -E \
+        -e '/[^;]$/d' \
+        -e '/node \[/d' \
+        -e '/rankdir=/d' \
+        -e 's/\[.*\]//' \
+        "raw/${EPKGS[package]}" > "stripped/${EPKGS[package]}"
 check_graph
 }
 
@@ -145,34 +147,61 @@ render_graph() {
     twopi "${twopi_args[@]}" > "${OUTPUT}"
 }
 
+resize_wallpaper() {
+        convert "${OUTPUT}" \
+            -gravity center \
+            -background "${BACKGROUND}" \
+            -extent "${SCREEN_SIZE}" \
+            "${STARTDIR}/${OUTPUT}"
+}
+
 set_wallpaper() {
     set +e
-    if [[ "$DESKTOP_SESSION" == *"gnome"* ]]; then
+
+    if [[ "$DESKTOP_SESSION" == *"gnome"* || "$DESKTOP_SESSION" == "pop" ]]; then
         if [[ -z "$SCREEN_SIZE" ]]; then
-        # Use imagemagick to resize the image to the size of the screen.
             SCREEN_SIZE=$(
                 xdpyinfo | grep dimensions | sed -r 's/^[^0-9]*([0-9]+x[0-9]+).*$/\1/'
             )
         fi
-        convert "${OUTPUT}" \
-            -gravity center \
-            -background "${BACKGROUND}" \
-            -extent "${SCREEN_SIZE}" \
-            "${STARTDIR}/${OUTPUT}"
-        gsettings set org.gnome.desktop.background picture-uri "${STARTDIR}/${OUTPUT}"
+        resize_wallpaper
+
+        #Did this here because I think imagemagick stuff should run first?
+        copy_to_xdg
+        #Change wallpaper
+        gsettings set org.gnome.desktop.background picture-uri "${XDGOUT}"
+
+        #Write xml so that file is recognised in gnome-control-center
+        mkdir -p "${XDG_DATA_HOME}/gnome-background-properties"
+        echo "<?xml version=\"1.0\" encoding=\"UTF-8\"?>
+        <!DOCTYPE wallpapers SYSTEM \"gnome-wp-list.dtd\">
+        <wallpapers>
+	        <wallpaper deleted=\"false\">
+		           <name>pacwall${BACKGROUND}</name>
+		           <filename>"${XDGOUT}"</filename>
+	        </wallpaper>
+        </wallpapers>" \
+            > "${XDG_DATA_HOME}/gnome-background-properties/pacwall${BACKGROUND}.xml"
+
+
     else
-        convert "${OUTPUT}" \
-            -gravity center \
-            -background "${BACKGROUND}" \
-            -extent "${SCREEN_SIZE}" \
-            "${STARTDIR}/${OUTPUT}"
-        hsetroot -solid $BACKGROUND -full "${STARTDIR}/${OUTPUT}" \
+        resize_wallpaper
+    	copy_to_xdg
+        hsetroot -solid $BACKGROUND -full "${XDGOUT}" \
             2> /dev/null && echo 'Set the wallpaper using hsetroot.'
 
-        feh --bg-center --no-fehbg --image-bg "$BACKGROUND" "${STARTDIR}/${OUTPUT}" \
+        feh --bg-center --no-fehbg --image-bg "$BACKGROUND" "${XDGOUT}" \
             2> /dev/null && echo 'Set the wallpaper using feh.'
     fi
+
     set -e
+}
+
+copy_to_xdg() {
+        #Copy the output to $HOME/.local/share/wallpapers as it is a standard XDG Directory
+        #This will make the wallpapers visible in KDE settings (and maybe WMs if they have a setting)
+        mkdir -p "${XDG_DATA_HOME}/wallpapers/pacwall"
+        cp "${STARTDIR}/${OUTPUT}" "${XDGOUT}"
 }
 
 main() {
@@ -180,7 +209,13 @@ main() {
     prepare
 
     echo 'Generating the graph...'
-    generate_graph 2> /dev/null
+
+    if command -v debtree 2&> /dev/null; then
+        generate_graph 2> /dev/null
+    else
+        echo "Can't found debtree."
+        exit 1
+    fi
 
     echo 'Compiling the graph...'
     compile_graph
@@ -197,6 +232,7 @@ main() {
     echo 'The image has been put into the current directory.'
     echo 'Done.'
 }
+
 
 help() {
     printf \
@@ -219,7 +255,7 @@ help() {
         exit 0
 }
 
-options='i:b:d:s:e:g:r:o:S:h'
+options='ib:d:s:e:g:r:o:S:h'
 while getopts $options option
 do
     case $option in
@@ -238,8 +274,12 @@ do
         *  ) echo "Unimplemented option: -${OPTARG}" >&2; exit 1;;
     esac
 done
-
 shift $((OPTIND - 1))
+
+if [[ -z "$XDG_DATA_HOME" ]]; then
+    XDG_DATA_HOME=~/.local/share
+fi
+XDGOUT="${XDG_DATA_HOME}/wallpapers/pacwall/pacwall${BACKGROUND}.png"
 
 main
 
